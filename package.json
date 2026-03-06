@@ -1,4 +1,4 @@
-  "name": "allentown-barber-ai",
+{  "name": "allentown-barber-ai",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
