@@ -8,15 +8,9 @@ app.use(bodyParser.json());
 const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN;
 const SQUARE_LOCATION_ID = process.env.SQUARE_LOCATION_ID;
 
-// ✅ Default barber (Richy)
+// Default barber (Richy)
 const DEFAULT_TEAM_MEMBER_ID = "TMzW-_CKTJ98MP62";
-
-// ✅ Keep version consistent
 const SQUARE_VERSION = "2023-10-18";
-
-function requireEnv(name, value) {
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-}
 
 app.get("/", (req, res) => {
   res.send("Allentown Barber Studio Booking Server Running ✅");
@@ -24,27 +18,46 @@ app.get("/", (req, res) => {
 
 app.post("/book-appointment", async (req, res) => {
   try {
-    requireEnv("SQUARE_ACCESS_TOKEN", SQUARE_ACCESS_TOKEN);
-    requireEnv("SQUARE_LOCATION_ID", SQUARE_LOCATION_ID);
+    // ✅ Extract arguments from Vapi tool call
+    const toolCall =
+      req.body?.message?.toolCallList?.[0] ||
+      req.body?.message?.toolCalls?.[0];
 
-    const { customerName, customerPhone, startAt, serviceVariationId } = req.body;
-
-    if (!customerName || !customerPhone || !startAt || !serviceVariationId) {
-      console.error("❌ Missing required fields:", req.body);
+    if (!toolCall || !toolCall.arguments) {
+      console.error("❌ No tool arguments received:", req.body);
       return res.status(400).json({
         success: false,
-        message: "Missing required fields."
+        message: "No booking arguments received"
       });
     }
 
-    console.log("📩 Incoming booking request:", req.body);
+    const {
+      customerName,
+      customerPhone,
+      startAt,
+      serviceVariationId
+    } = toolCall.arguments;
 
-    // ✅ 1) Create customer
+    console.log("📩 Booking arguments:", {
+      customerName,
+      customerPhone,
+      startAt,
+      serviceVariationId
+    });
+
+    if (!customerName || !customerPhone || !startAt || !serviceVariationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required booking fields"
+      });
+    }
+
+    // ✅ Create customer
     const customerResponse = await fetch("https://connect.squareup.com/v2/customers", {
       method: "POST",
       headers: {
         "Square-Version": SQUARE_VERSION,
-        "Authorization": `Bearer ${SQUARE_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -56,23 +69,18 @@ app.post("/book-appointment", async (req, res) => {
     const customerData = await customerResponse.json();
 
     if (!customerResponse.ok) {
-      console.error("❌ Square customer error:", JSON.stringify(customerData, null, 2));
-      return res.status(502).json({
-        success: false,
-        message: "Customer creation failed",
-        squareError: customerData
-      });
+      console.error("❌ Square customer error:", customerData);
+      return res.status(502).json({ success: false });
     }
 
-    const customerId = customerData?.customer?.id;
-    console.log("✅ Customer created:", customerId);
+    const customerId = customerData.customer.id;
 
-    // ✅ 2) Create booking (assigned to Richy)
+    // ✅ Create booking (assigned to Richy)
     const bookingResponse = await fetch("https://connect.squareup.com/v2/bookings", {
       method: "POST",
       headers: {
         "Square-Version": SQUARE_VERSION,
-        "Authorization": `Bearer ${SQUARE_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -94,29 +102,20 @@ app.post("/book-appointment", async (req, res) => {
     const bookingData = await bookingResponse.json();
 
     if (!bookingResponse.ok) {
-      console.error("❌ Square booking error:", JSON.stringify(bookingData, null, 2));
-      return res.status(502).json({
-        success: false,
-        message: "Booking failed",
-        squareError: bookingData
-      });
+      console.error("❌ Square booking error:", bookingData);
+      return res.status(502).json({ success: false });
     }
 
-    console.log("✅ Booking successful:", bookingData);
+    console.log("✅ Booking confirmed:", bookingData);
 
     return res.json({
       success: true,
-      message: "Appointment booked successfully.",
-      booking: bookingData
+      message: "Appointment booked successfully"
     });
 
-  } catch (error) {
-    console.error("❌ Server crash:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: String(error?.message || error)
-    });
+  } catch (err) {
+    console.error("❌ Server error:", err);
+    return res.status(500).json({ success: false });
   }
 });
 
